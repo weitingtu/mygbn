@@ -370,7 +370,8 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
 {
     int size = len / MAX_PAYLOAD_SIZE + 1;
     int recv_len = 0;
-    for ( int i = 0; i < size; ++i )
+    int i = 0;
+    while ( i < size )
     {
         MYGBN_Packet packet;
         struct sockaddr from;
@@ -391,6 +392,7 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
 
                 ++receiver->expected;
                 receiver->acked = packet.seqNum;
+                ++i;
             }
 
             if ( -1 == _send_ack_packet( receiver->sd, receiver->acked, &from, fromlen ) )
