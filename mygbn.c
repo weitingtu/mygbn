@@ -26,6 +26,7 @@ pthread_cond_t time_signal = PTHREAD_COND_INITIALIZER;
 
 void _print_packet( MYGBN_Packet* packet )
 {
+#ifdef DEBUG
     printf( "protocol: %c%c%c\n", packet->protocol[0], packet->protocol[1], packet->protocol[2] );
     printf( "type    : %x\n",     packet->type );
     printf( "seq num : %u\n",     packet->seqNum );
@@ -36,6 +37,7 @@ void _print_packet( MYGBN_Packet* packet )
         printf( " %2x", packet->payload[i] );
     }
     printf( "\n" );
+#endif
 }
 
 char* _create_data_packet( MYGBN_Packet* packet, int seq_num, unsigned char* data, int len )
@@ -288,7 +290,6 @@ void mygbn_init_sender( struct mygbn_sender* sender, char* ip, int port, int N, 
     memset( &sender->address, 0, sizeof( struct sockaddr_in ) );
     sender->address.sin_family = AF_INET;
     inet_pton( AF_INET, ip, &( sender->address.sin_addr ) );
-    sender->address.sin_addr.s_addr = htonl( INADDR_ANY );
     sender->address.sin_port = htons( port );
     bind( sender->sd, ( struct sockaddr* )&sender->address, sizeof( struct sockaddr ) );
 

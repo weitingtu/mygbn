@@ -2,7 +2,7 @@ CC = g++
 CFLAG = -O2 -lpthread
 ifeq ($(MODE),rd)
     CFLAGS -= O2
-    CFLAGS += -g3 -gdwarf-4 -ggdb3 
+    CFLAGS += -g3 -gdwarf-4 -ggdb3 -DDEBUG
 endif
 
 all: myftpclient myftpserver mygbn.o myftpclient.o myftpserver.o
