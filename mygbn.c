@@ -233,6 +233,7 @@ void* pthread_ack_prog( void* sSender )
     while ( 1 )
     {
         MYGBN_Packet packet;
+        io_debug( "receive packet\n" );
         if ( -1 == _recv_packet( sender->sd, &packet, NULL, NULL ) )
         {
             exit( 0 );
@@ -248,6 +249,7 @@ void* pthread_ack_prog( void* sSender )
         // get base ack
         if ( packet.seqNum == sender->base )
         {
+            io_debug( "get base %u ack seq num %u\n", sender->base, packet.seqNum );
             ++sender->base;
             free( sender->window.front().data );
             sender->window.pop_front();
@@ -259,6 +261,7 @@ void* pthread_ack_prog( void* sSender )
                 sender->cache.pop();
                 d.seq_num = sender->nextseqnum++;
                 sender->window.push_back( d );
+                io_debug( "send cache packet\n" );
                 if ( -1 == _send_data_packet( sender, d.data, d.len, d.seq_num ) )
                 {
                     exit( 0 );
@@ -267,6 +270,7 @@ void* pthread_ack_prog( void* sSender )
 
             if ( end_seq_num == std::numeric_limits<unsigned>::max() && sender->base == sender->nextseqnum )
             {
+                io_debug( "send end packet base %u next seq num %u\n", sender->base, sender->nextseqnum );
                 end_seq_num = sender->nextseqnum;
                 // send end
                 MyGBN_Data d( 0, 0, sender->nextseqnum++ );
@@ -423,6 +427,7 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
                 ++i;
             }
 
+            io_debug( "send packet\n" );
             if ( -1 == _send_ack_packet( receiver->sd, receiver->acked, &from, fromlen ) )
             {
                 return -1;
