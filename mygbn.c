@@ -283,7 +283,7 @@ void* pthread_ack_prog( void* sSender )
         }
         else
         {
-            printf( "seq num %u base %u mismatch. drop it, it is not the expected ACK\n", packet.seqNum, sender->base );
+            io_debug( "seq num %u base %u mismatch. drop it, it is not the expected ACK\n", packet.seqNum, sender->base );
         }
 
         pthread_mutex_unlock( &sender_lock );
