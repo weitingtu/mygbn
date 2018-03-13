@@ -191,8 +191,8 @@ void* pthread_timeout_prog( void* sSender )
         io_debug( "re-send all the packets in current window (size: %u)\n", ( unsigned )sender->window.size() );
         // re-send all the packets in current window
         std::list<MyGBN_Data>::iterator ite = sender->window.begin();
-        std::list<MyGBN_Data>::iterator ite_end = sender->window.begin();
-        for ( ; ite != ite_end; )
+        std::list<MyGBN_Data>::iterator ite_end = sender->window.end();
+        for ( ; ite != ite_end; ++ite )
         {
             if ( -1 == _send_data_packet( sender, ( *ite ).data, ( *ite ).len, ( *ite ).seq_num ) )
             {
