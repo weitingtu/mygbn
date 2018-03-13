@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <arpa/inet.h>
 #include <assert.h>
+#include <stdarg.h>
 #include <limits>
 #include "mygbn.h"
 
@@ -23,6 +24,23 @@ pthread_cond_t ack_signal = PTHREAD_COND_INITIALIZER;
 
 pthread_mutex_t time_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t time_signal = PTHREAD_COND_INITIALIZER;
+
+void _io_debug( const char* format, ... ) __attribute__( ( format( printf, 1, 2 ) ) );
+void _io_debug( const char* format, ... )
+{
+#ifdef DEBUG
+    printf( "<debug> " );
+    va_list args;
+    va_start( args, format );
+    vprintf( format, args );
+    va_end( args );
+#endif
+}
+
+#define io_debug( format, ... )   \
+    { \
+        _io_debug( format, ##__VA_ARGS__); \
+    }
 
 void _print_packet( MYGBN_Packet* packet )
 {
@@ -144,7 +162,7 @@ void* pthread_timeout_prog( void* sSender )
 
     while ( 1 )
     {
-        printf( "timing::set timeout deadline\n" );
+        io_debug( "timing::set timeout deadline\n" );
         pthread_mutex_lock( &time_lock );
 
         gettimeofday( &tp, NULL );
@@ -154,22 +172,23 @@ void* pthread_timeout_prog( void* sSender )
         ts.tv_sec += sender->timeout;     // set wait deadline
 
         int rc;
-        printf( "timing::wait for the signal or timeout!\n" );
+        io_debug( "timing::wait for the signal or timeout!\n" );
         rc = pthread_cond_timedwait( &time_signal, &time_lock, &ts );
 
         if ( rc == ETIMEDOUT )
         {
-            printf( "timing::timing thread timeout!\n" );
+            io_debug( "timing::timing thread timeout!\n" );
         }
         else
         {
-            printf( "timing::timing thread is waked up by signal!\n" );
+            io_debug( "timing::timing thread is waked up by signal!\n" );
         }
         pthread_mutex_unlock( &time_lock );
 
 
         pthread_mutex_lock( &sender_lock );
 
+        io_debug( "re-send all the packets in current window (size: %u)\n", ( unsigned )sender->window.size() );
         // re-send all the packets in current window
         std::list<MyGBN_Data>::iterator ite = sender->window.begin();
         std::list<MyGBN_Data>::iterator ite_end = sender->window.begin();
@@ -184,6 +203,7 @@ void* pthread_timeout_prog( void* sSender )
         bool finish = false;
         if ( sender->send_end_packet )
         {
+            io_debug( "re-send end packet %u\n", sender->resend_end_packet_count );
             if ( ( ++sender->resend_end_packet_count ) > 3 )
             {
                 // after 3 times retransmission, terminate and report an error
@@ -323,10 +343,12 @@ int mygbn_send( struct mygbn_sender* sender, unsigned char* buf, int len )
         // Window full, put into queue
         if ( sender->nextseqnum - sender->base >= sender->N )
         {
+            io_debug( "window full, put into queue nextseqnum %u base %u N %u\n", sender->nextseqnum, sender->base, sender->N );
             sender->cache.push( MyGBN_Data( cache, data_len, 0 ) );
             continue;
         }
 
+        io_debug( "send packet\n" );
         MyGBN_Data d( cache, data_len, sender->nextseqnum++ );
         sender->window.push_back( d );
         if ( -1 == _send_data_packet( sender, d.data, d.len, d.seq_num ) )
@@ -342,6 +364,11 @@ int mygbn_send( struct mygbn_sender* sender, unsigned char* buf, int len )
 
 void mygbn_close_sender( mygbn_sender* sender )
 {
+    if ( sender->resend_end_packet_count  > 3 )
+    {
+        printf( "error: failed to receive end packget ack\n" );
+    }
+
     pthread_mutex_lock( &ack_lock );
     pthread_cond_wait( &ack_signal, &ack_lock );
     pthread_mutex_unlock( &ack_lock );
@@ -381,12 +408,13 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
         {
             return -1;
         }
+        io_debug( "receive packet\n" );
+        _print_packet( &packet );
         if ( DATA_PACKET == packet.type )
         {
-            _print_packet( &packet );
-
             if ( receiver->expected == packet.seqNum )
             {
+                io_debug( "accept packet expected %u acked %u seq num %u\n", receiver->expected, receiver->acked, packet.seqNum );
                 memcpy( buf + i * MAX_PAYLOAD_SIZE, packet.payload, packet.length - sizeof( MYGBN_Packet ) );
                 recv_len += packet.length - sizeof( MYGBN_Packet );
 
@@ -403,7 +431,6 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
         }
         else if ( END_PACKET == packet.type )
         {
-            _print_packet( &packet );
             if ( -1 == _send_ack_packet( receiver->sd, packet.seqNum, &from, fromlen ) )
             {
                 return -1;
