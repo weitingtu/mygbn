@@ -451,7 +451,7 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
             }
 
             io_debug( "send packet\n" );
-            if ( -1 == _send_ack_packet( receiver->sd, receiver->acked, &from, fromlen ) )
+            if ( -1 == _send_ack_packet( receiver->sd, std::min( receiver->acked, packet.seqNum ), &from, fromlen ) )
             {
                 return -1;
             }
