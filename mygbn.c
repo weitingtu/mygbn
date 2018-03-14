@@ -131,6 +131,25 @@ int _send_data_packet( struct mygbn_sender* sender, unsigned char* buf, int data
     free( data );
 }
 
+int _send_end_packet( struct mygbn_sender* sender, unsigned seq_num )
+{
+    if ( seq_num - sender->base >= sender->N )
+    {
+        printf( "next seq num %u base %u N %u\n", seq_num, sender->base, sender->N );
+        assert( seq_num - sender->base < sender->N );
+    }
+
+    MYGBN_Packet packet;
+    char* data = _create_end_packet( &packet, seq_num );
+    _print_packet( &packet );
+    int res = sendto( sender->sd, data, sizeof( MYGBN_Packet ), 0, ( struct sockaddr* )&sender->address, sizeof( sender->address ) );
+    if ( -1 == res )
+    {
+        fprintf( stderr, "error sending data packet, exit! %s\n", strerror( errno ) );
+    }
+    free( data );
+}
+
 void _print_addr( struct sockaddr* from )
 {
     struct sockaddr_in* addr_in = ( struct sockaddr_in* )from;
@@ -203,10 +222,13 @@ void* pthread_timeout_prog( void* sSender )
         bool finish = false;
         if ( sender->send_end_packet )
         {
-            io_debug( "re-send end packet %u\n", sender->resend_end_packet_count );
-            if ( ( ++sender->resend_end_packet_count ) > 3 )
+            if ( ( sender->resend_end_packet_count++ ) < 3 )
             {
-                // after 3 times retransmission, terminate and report an error
+                io_debug( "re-send end packet %u\n", sender->resend_end_packet_count );
+            }
+            else
+            {
+                io_debug( "after 3 times retransmission, terminate and report an error" );
                 finish = true;
             }
         }
@@ -274,15 +296,12 @@ void* pthread_ack_prog( void* sSender )
                 end_seq_num = sender->nextseqnum;
                 // send end
                 MyGBN_Data d( 0, 0, sender->nextseqnum++ );
-                MYGBN_Packet packet;
-                char* data = _create_end_packet( &packet, d.seq_num );
                 sender->window.push_back( d );
-                if ( -1 == sendto( sender->sd, data, sizeof( MYGBN_Packet ), 0, ( struct sockaddr* )&sender->address, sizeof( sender->address ) ) )
+                if ( -1 == _send_end_packet( sender, d.seq_num ) )
                 {
                     exit( 0 );
                 }
                 sender->send_end_packet = true;
-                free( data );
             }
         }
         else
@@ -399,7 +418,11 @@ void mygbn_init_receiver( mygbn_receiver* receiver, int port )
 
 int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
 {
-    int size = len / MAX_PAYLOAD_SIZE + 1;
+    int size = len / MAX_PAYLOAD_SIZE;
+    if ( len % MAX_PAYLOAD_SIZE != 0 )
+    {
+        ++size;
+    }
     int recv_len = 0;
     int i = 0;
     while ( i < size )
@@ -432,7 +455,6 @@ int mygbn_recv( struct mygbn_receiver* receiver, unsigned char* buf, int len )
             {
                 return -1;
             }
-            receiver->acked = packet.seqNum;
         }
         else if ( END_PACKET == packet.type )
         {
