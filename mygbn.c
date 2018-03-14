@@ -25,15 +25,19 @@ pthread_cond_t ack_signal = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t time_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t time_signal = PTHREAD_COND_INITIALIZER;
 
+pthread_mutex_t debug_lock = PTHREAD_MUTEX_INITIALIZER;
+
 void _io_debug( const char* format, ... ) __attribute__( ( format( printf, 1, 2 ) ) );
 void _io_debug( const char* format, ... )
 {
 #ifdef DEBUG
+    pthread_mutex_lock( &debug_lock );
     printf( "<debug> " );
     va_list args;
     va_start( args, format );
     vprintf( format, args );
     va_end( args );
+    pthread_mutex_unlock( &debug_lock );
 #endif
 }
 
@@ -45,6 +49,7 @@ void _io_debug( const char* format, ... )
 void _print_packet( MYGBN_Packet* packet )
 {
 #ifdef DEBUG
+    pthread_mutex_lock( &debug_lock );
     printf( "protocol: %c%c%c\n", packet->protocol[0], packet->protocol[1], packet->protocol[2] );
     printf( "type    : %x\n",     packet->type );
     printf( "seq num : %u\n",     packet->seqNum );
@@ -55,6 +60,7 @@ void _print_packet( MYGBN_Packet* packet )
         printf( " %2x", packet->payload[i] );
     }
     printf( "\n" );
+    pthread_mutex_unlock( &debug_lock );
 #endif
 }
 
@@ -213,9 +219,23 @@ void* pthread_timeout_prog( void* sSender )
         std::list<MyGBN_Data>::iterator ite_end = sender->window.end();
         for ( ; ite != ite_end; ++ite )
         {
-            if ( -1 == _send_data_packet( sender, ( *ite ).data, ( *ite ).len, ( *ite ).seq_num ) )
+            if ( DATA_PACKET == ( *ite ).type )
             {
-                exit( 0 );
+                if ( -1 == _send_data_packet( sender, ( *ite ).data, ( *ite ).len, ( *ite ).seq_num ) )
+                {
+                    exit( 0 );
+                }
+            }
+            else if ( END_PACKET == ( *ite ).type )
+            {
+                if ( -1 == _send_end_packet( sender, ( *ite ).seq_num ) )
+                {
+                    exit( 0 );
+                }
+            }
+            else
+            {
+                printf( "error: window has illegal type %x packet\n", ( *ite ).type );
             }
         }
 
@@ -284,9 +304,23 @@ void* pthread_ack_prog( void* sSender )
                 d.seq_num = sender->nextseqnum++;
                 sender->window.push_back( d );
                 io_debug( "send cache packet\n" );
-                if ( -1 == _send_data_packet( sender, d.data, d.len, d.seq_num ) )
+                if ( DATA_PACKET == d.type )
                 {
-                    exit( 0 );
+                    if ( -1 == _send_data_packet( sender, d.data, d.len, d.seq_num ) )
+                    {
+                        exit( 0 );
+                    }
+                }
+                else if ( END_PACKET == d.type )
+                {
+                    if ( -1 == _send_end_packet( sender, d.seq_num ) )
+                    {
+                        exit( 0 );
+                    }
+                }
+                else
+                {
+                    printf( "error: cache has illegal type %x packet\n", d.type );
                 }
             }
 
@@ -295,7 +329,7 @@ void* pthread_ack_prog( void* sSender )
                 io_debug( "send end packet base %u next seq num %u\n", sender->base, sender->nextseqnum );
                 end_seq_num = sender->nextseqnum;
                 // send end
-                MyGBN_Data d( 0, 0, sender->nextseqnum++ );
+                MyGBN_Data d( 0, 0, END_PACKET, sender->nextseqnum++ );
                 sender->window.push_back( d );
                 if ( -1 == _send_end_packet( sender, d.seq_num ) )
                 {
@@ -367,12 +401,12 @@ int mygbn_send( struct mygbn_sender* sender, unsigned char* buf, int len )
         if ( sender->nextseqnum - sender->base >= sender->N )
         {
             io_debug( "window full, put into queue nextseqnum %u base %u N %u\n", sender->nextseqnum, sender->base, sender->N );
-            sender->cache.push( MyGBN_Data( cache, data_len, 0 ) );
+            sender->cache.push( MyGBN_Data( cache, data_len, DATA_PACKET, 0 ) );
             continue;
         }
 
         io_debug( "send packet\n" );
-        MyGBN_Data d( cache, data_len, sender->nextseqnum++ );
+        MyGBN_Data d( cache, data_len, DATA_PACKET, sender->nextseqnum++ );
         sender->window.push_back( d );
         if ( -1 == _send_data_packet( sender, d.data, d.len, d.seq_num ) )
         {

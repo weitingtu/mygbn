@@ -31,9 +31,10 @@ typedef struct MYGBN_Packet_s MYGBN_Packet;
 
 struct MyGBN_Data
 {
-    MyGBN_Data( unsigned char* d, int l, unsigned int s ) : data( d ), len( l ), seq_num( s ) {}
+    MyGBN_Data( unsigned char* d, int l, unsigned char t, unsigned int s ) : data( d ), len( l ), type( t ), seq_num( s ) {}
     unsigned char* data;
     int len;
+    unsigned char type;
     unsigned int seq_num;
 };
 
