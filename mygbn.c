@@ -387,12 +387,18 @@ void mygbn_init_sender( struct mygbn_sender* sender, char* ip, int port, int N, 
 
 int mygbn_send( struct mygbn_sender* sender, unsigned char* buf, int len )
 {
-    int size = len / MAX_PAYLOAD_SIZE + 1;
+    int size = len / MAX_PAYLOAD_SIZE;
+    int tail_block_size = MAX_PAYLOAD_SIZE;
+    if ( len % MAX_PAYLOAD_SIZE != 0 )
+    {
+        ++size;
+        tail_block_size = len % MAX_PAYLOAD_SIZE;
+    }
     int i = 0;
     pthread_mutex_lock( &sender_lock );
     for ( ; i < size; ++i )
     {
-        int data_len = i == size - 1 ? len % MAX_PAYLOAD_SIZE :  MAX_PAYLOAD_SIZE;
+        int data_len = i == size - 1 ? tail_block_size :  MAX_PAYLOAD_SIZE;
 
         unsigned char* cache = ( unsigned char* ) malloc( sizeof( unsigned char ) * data_len );
         memcpy( cache, buf + i * MAX_PAYLOAD_SIZE, data_len );
